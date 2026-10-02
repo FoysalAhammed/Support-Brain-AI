@@ -1,0 +1,120 @@
+import type { BillingState, Plan } from "@/types/billing";
+import { agoDays, aheadDays } from "./time";
+
+export const mockPlans: Plan[] = [
+  {
+    id: "starter",
+    name: "Starter",
+    tagline: "For small teams getting their first AI agent live.",
+    priceMonthly: 79,
+    priceYearly: 790,
+    conversationLimit: 1000,
+    knowledgeSourceLimit: 3,
+    teamLimit: 3,
+    cta: "Start free trial",
+    features: [
+      { label: "1 AI agent", included: true },
+      { label: "1,000 conversations / month", included: true },
+      { label: "3 knowledge sources", included: true },
+      { label: "Website chat widget", included: true },
+      { label: "Email support", included: true },
+      { label: "Facebook Messenger", included: false },
+      { label: "WhatsApp & Voice", included: false },
+      { label: "Custom roles & SSO", included: false },
+    ],
+  },
+  {
+    id: "growth",
+    name: "Growth",
+    tagline: "For growing businesses scaling support across channels.",
+    priceMonthly: 249,
+    priceYearly: 2490,
+    highlighted: true,
+    conversationLimit: 10000,
+    knowledgeSourceLimit: 15,
+    teamLimit: 10,
+    cta: "Start free trial",
+    features: [
+      { label: "Unlimited AI agents", included: true },
+      { label: "10,000 conversations / month", included: true },
+      { label: "15 knowledge sources", included: true },
+      { label: "Website, Facebook & WhatsApp", included: true },
+      { label: "Human handoff & inbox", included: true },
+      { label: "Analytics & reporting", included: true },
+      { label: "Voice channel", included: false },
+      { label: "Custom roles & SSO", included: false },
+    ],
+  },
+  {
+    id: "business",
+    name: "Business",
+    tagline: "For support organisations that need every channel.",
+    priceMonthly: 899,
+    priceYearly: 8990,
+    conversationLimit: 60000,
+    knowledgeSourceLimit: 60,
+    teamLimit: 50,
+    cta: "Start free trial",
+    features: [
+      { label: "Unlimited AI agents", included: true },
+      { label: "60,000 conversations / month", included: true },
+      { label: "60 knowledge sources", included: true },
+      { label: "All channels incl. Voice", included: true },
+      { label: "Advanced RAG tuning", included: true },
+      { label: "Custom roles & SSO", included: true },
+      { label: "Priority support & SLA", included: true },
+      { label: "Dedicated success manager", included: false },
+    ],
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    tagline: "For large, regulated organisations with custom needs.",
+    priceMonthly: 2400,
+    priceYearly: 24000,
+    conversationLimit: 500000,
+    knowledgeSourceLimit: 500,
+    teamLimit: 500,
+    cta: "Talk to sales",
+    features: [
+      { label: "Everything in Business", included: true },
+      { label: "Unlimited conversations", included: true },
+      { label: "Unlimited knowledge sources", included: true },
+      { label: "Data residency & DPA", included: true },
+      { label: "SAML SSO & SCIM", included: true },
+      { label: "Custom model routing", included: true },
+      { label: "99.99% uptime SLA", included: true },
+      { label: "Dedicated success manager", included: true },
+    ],
+  },
+];
+
+export const mockBillingState: BillingState = {
+  plan: "growth",
+  interval: "monthly",
+  renewsAt: aheadDays(18),
+  paymentMethod: {
+    brand: "Visa",
+    last4: "4242",
+    expMonth: 8,
+    expYear: 2028,
+  },
+  usage: [
+    { id: "u_conv", label: "Conversations", used: 12482, limit: 25000, unit: "conversations" },
+    { id: "u_knowledge", label: "Knowledge sources", used: 3, limit: 15, unit: "sources" },
+    { id: "u_seats", label: "Team members", used: 5, limit: 10, unit: "seats" },
+    { id: "u_ai", label: "AI messages", used: 48210, limit: 150000, unit: "messages" },
+  ],
+  invoices: [
+    { id: "inv_1042", number: "INV-1042", date: agoDays(12), amount: 249, status: "paid", plan: "Growth · Monthly" },
+    { id: "inv_1031", number: "INV-1031", date: agoDays(42), amount: 249, status: "paid", plan: "Growth · Monthly" },
+    { id: "inv_1020", number: "INV-1020", date: agoDays(72), amount: 249, status: "paid", plan: "Growth · Monthly" },
+    { id: "inv_1009", number: "INV-1009", date: agoDays(102), amount: 249, status: "paid", plan: "Growth · Monthly" },
+    { id: "inv_0998", number: "INV-0998", date: agoDays(132), amount: 79, status: "refunded", plan: "Starter · Monthly" },
+    { id: "inv_0987", number: "INV-0987", date: agoDays(162), amount: 79, status: "paid", plan: "Starter · Monthly" },
+  ],
+};
+
+export function findPlan(id: string) {
+  return mockPlans.find((plan) => plan.id === id);
+}
