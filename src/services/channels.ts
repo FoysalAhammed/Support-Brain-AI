@@ -42,6 +42,14 @@ export const channelService = {
     return channels.find((channel) => channel.id === id) ?? null;
   },
 
+  async assignUsers(id: string, userIds: string[]): Promise<ChannelConnection | null> {
+    await sleep(200);
+    channels = channels.map((channel) =>
+      channel.id === id ? { ...channel, assignedUserIds: userIds } : channel,
+    );
+    return channels.find((channel) => channel.id === id) ?? null;
+  },
+
   async getWidgetConfig(): Promise<WidgetConfig> {
     await sleep(20);
     return widgetConfig;

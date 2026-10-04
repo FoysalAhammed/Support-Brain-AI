@@ -136,6 +136,48 @@ const corpus: CorpusEntry[] = [
     ],
     confidence: 93,
   },
+  {
+    topics: ["order", "orders", "purchase", "bought", "how many orders", "average order"],
+    answer:
+      "From the connected Northwind Orders database there were 4,182 orders in the last 30 days, with an average order value of $86.40, a 3.1% cancellation rate and 62% containing two or more items.",
+    chunks: [
+      { sourceId: "src_database", label: "Orders", kind: "document", score: 0.95 },
+      { sourceId: "src_database", label: "Order Items", kind: "document", score: 0.83 },
+      { sourceId: "src_database", label: "Payments", kind: "document", score: 0.74 },
+    ],
+    confidence: 94,
+  },
+  {
+    topics: ["inventory", "stock", "in stock", "available", "reorder", "warehouse"],
+    answer:
+      "Inventory is tracked per SKU per warehouse in the database. 18 products are below their reorder threshold and 6 are out of stock; the Cedar lounge chair holds 240 units across three warehouses.",
+    chunks: [
+      { sourceId: "src_database", label: "Inventory", kind: "document", score: 0.94 },
+      { sourceId: "src_database", label: "Product Catalog", kind: "document", score: 0.81 },
+    ],
+    confidence: 92,
+  },
+  {
+    topics: ["customer", "customers", "buyers", "accounts", "lifetime value", "members"],
+    answer:
+      "The customers table in the connected database holds 38,204 active accounts. 12% are Northwind Plus members and the average lifetime value is $412.",
+    chunks: [
+      { sourceId: "src_database", label: "Customers", kind: "document", score: 0.93 },
+      { sourceId: "src_database", label: "Subscriptions", kind: "document", score: 0.78 },
+    ],
+    confidence: 91,
+  },
+  {
+    topics: ["revenue", "sales", "income", "mrr", "monthly recurring", "profit"],
+    answer:
+      "Revenue for the current month is $1.28M, up 14% month over month, with subscriptions contributing $182k of monthly recurring revenue according to the connected database.",
+    chunks: [
+      { sourceId: "src_database", label: "Payments", kind: "document", score: 0.94 },
+      { sourceId: "src_database", label: "Orders", kind: "document", score: 0.82 },
+      { sourceId: "src_database", label: "Subscriptions", kind: "document", score: 0.76 },
+    ],
+    confidence: 92,
+  },
 ];
 
 function buildRetrieved(entry: CorpusEntry): RagRetrievedChunk[] {
@@ -197,6 +239,10 @@ export const knowledgeService = {
     contentBlocks: number;
     chunks: number;
     organizationId?: string;
+    engine?: KnowledgeSource["engine"];
+    host?: string;
+    tables?: number;
+    rows?: number;
   }): Promise<KnowledgeSource> {
     const source: KnowledgeSource = {
       id: `src_${Date.now().toString(36)}`,
@@ -215,6 +261,10 @@ export const knowledgeService = {
       lastSyncedAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
       agentIds: [],
+      engine: input.engine,
+      host: input.host,
+      tables: input.tables,
+      rows: input.rows,
     };
     sources = [source, ...sources];
     return source;

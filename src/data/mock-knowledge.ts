@@ -61,6 +61,28 @@ export const mockKnowledgeSources: KnowledgeSource[] = [
     createdAt: agoHours(1),
     agentIds: [],
   },
+  {
+    id: "src_database",
+    organizationId: ORG,
+    name: "Northwind Orders DB",
+    type: "database",
+    url: "db://db.northwind.internal:5432/northwind",
+    domain: "db.northwind.internal",
+    status: "ready",
+    pages: 12,
+    contentBlocks: 48200,
+    chunks: 3120,
+    embeddings: 3120,
+    sizeKb: 9040,
+    coverage: 100,
+    lastSyncedAt: ago(3),
+    createdAt: agoDays(12),
+    agentIds: ["agt_support"],
+    engine: "postgresql",
+    host: "db.northwind.internal",
+    tables: 12,
+    rows: 48200,
+  },
 ];
 
 export const mockExtractedSections: ExtractedSection[] = [
@@ -144,6 +166,46 @@ export const mockExtractedSections: ExtractedSection[] = [
     text: "Recent public posts include the Autumn Collection launch with 15% off first orders using code AUTUMN15, an extended Black Friday returns window, a restock notice for the Cedar lounge chair, and a community fundraiser supporting reforestation in the Pacific Northwest.",
     words: 42,
   },
+  {
+    id: "sec_11",
+    sourceId: "src_database",
+    pageTitle: "Orders",
+    heading: "public.orders",
+    text: "public.orders records every order with status, customer_id, total, currency, discount and created_at. In the last 30 days there were 4,182 orders averaging $86.40, a 3.1% cancellation rate, and 62% contained two or more items.",
+    words: 40,
+  },
+  {
+    id: "sec_12",
+    sourceId: "src_database",
+    pageTitle: "Customers",
+    heading: "public.customers",
+    text: "public.customers holds 38,204 active accounts with email, signup date, membership tier and lifetime_value. 12% are Northwind Plus members and the average lifetime value is $412.",
+    words: 28,
+  },
+  {
+    id: "sec_13",
+    sourceId: "src_database",
+    pageTitle: "Inventory",
+    heading: "public.inventory",
+    text: "public.inventory tracks stock on hand per SKU per warehouse. 18 products are below their reorder threshold and 6 are out of stock; the Cedar lounge chair holds 240 units across three warehouses.",
+    words: 34,
+  },
+  {
+    id: "sec_14",
+    sourceId: "src_database",
+    pageTitle: "Payments",
+    heading: "public.payments",
+    text: "public.payments records 5,904 settled payments this month with method, provider, amount and status. Card payments are 71%, digital wallets 22% and buy-now-pay-later 7%.",
+    words: 26,
+  },
+  {
+    id: "sec_15",
+    sourceId: "src_database",
+    pageTitle: "Shipments",
+    heading: "public.shipments",
+    text: "public.shipments holds 4,010 shipments with carrier, tracking_number, dispatched_at and delivered_at. 94% delivered within the promised window and the average transit time is 2.8 days.",
+    words: 26,
+  },
 ];
 
 export const mockKnowledgeActivity: KnowledgeActivity[] = [
@@ -195,6 +257,27 @@ export const mockKnowledgeActivity: KnowledgeActivity[] = [
     kind: "created",
     message: "Source created and initial crawl queued",
     at: agoDays(38),
+  },
+  {
+    id: "act_8",
+    sourceId: "src_database",
+    kind: "synced",
+    message: "Read-only sync — 6 tables changed, 412 records updated",
+    at: ago(3),
+  },
+  {
+    id: "act_9",
+    sourceId: "src_database",
+    kind: "indexed",
+    message: "3,120 vectors written to index northwind-orders",
+    at: ago(3),
+  },
+  {
+    id: "act_10",
+    sourceId: "src_database",
+    kind: "created",
+    message: "Database connected over SSL and schema discovered",
+    at: agoDays(12),
   },
 ];
 

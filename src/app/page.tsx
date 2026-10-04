@@ -33,6 +33,8 @@ import { SiteFooter } from "@/components/marketing/site-footer";
 import { PricingCards } from "@/components/marketing/pricing-cards";
 import { ProductTour } from "@/components/marketing/product-tour";
 import { Counter, Float, MotionRoot, Reveal, Stagger, StaggerItem } from "@/components/marketing/anim";
+import { ChatWidget } from "@/components/widget/chat-widget";
+import { defaultWidgetConfig } from "@/data/mock-channels";
 import { billingService } from "@/services/billing";
 import { cn } from "@/lib/utils";
 
@@ -755,6 +757,8 @@ export default async function HomePage() {
         </main>
 
         <SiteFooter />
+
+        <ChatWidget config={defaultWidgetConfig} />
       </div>
     </MotionRoot>
   );

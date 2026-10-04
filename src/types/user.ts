@@ -1,6 +1,8 @@
 import type { ID } from "./common";
 
-export type UserRole = "owner" | "admin" | "agent" | "viewer";
+export type UserRole = "owner" | "admin" | "moderator" | "agent" | "viewer";
+
+export type PlatformRole = "developer" | "admin";
 
 export type MemberStatus = "active" | "invited" | "deactivated";
 
@@ -15,6 +17,10 @@ export interface User {
   title?: string;
   lastActiveAt: string;
   createdAt: string;
+  /** Channels this member is responsible for (moderator/agent allocation). */
+  channelIds?: ID[];
+  /** Set only for platform (org_platform) accounts. */
+  platformRole?: PlatformRole;
 }
 
 export interface AuthSession {

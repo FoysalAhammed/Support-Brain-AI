@@ -1,6 +1,8 @@
 import type { ID } from "./common";
 
-export type KnowledgeSourceType = "website" | "facebook" | "document";
+export type KnowledgeSourceType = "website" | "facebook" | "document" | "database";
+
+export type DatabaseEngine = "postgresql" | "mysql" | "mongodb" | "supabase";
 
 export type KnowledgeSourceStatus =
   | "queued"
@@ -27,6 +29,10 @@ export interface KnowledgeSource {
   createdAt: string;
   error?: string;
   agentIds: ID[];
+  engine?: DatabaseEngine;
+  host?: string;
+  tables?: number;
+  rows?: number;
 }
 
 export interface ExtractedSection {

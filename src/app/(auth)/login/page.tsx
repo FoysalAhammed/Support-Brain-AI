@@ -10,7 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/components/providers/auth-provider";
-import { DEMO_EMAIL, DEMO_PASSWORD } from "@/services/auth";
+import {
+  DEMO_EMAIL,
+  DEMO_PASSWORD,
+  DEVELOPER_EMAIL,
+  DEVELOPER_PASSWORD,
+  MODERATOR_EMAIL,
+  MODERATOR_PASSWORD,
+} from "@/services/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -127,6 +134,35 @@ export default function LoginPage() {
         Continue with demo account
       </Button>
 
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          onClick={() => {
+            setEmail(DEVELOPER_EMAIL);
+            setPassword(DEVELOPER_PASSWORD);
+            submit(DEVELOPER_EMAIL, DEVELOPER_PASSWORD);
+          }}
+        >
+          Developer owner
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={loading}
+          onClick={() => {
+            setEmail(MODERATOR_EMAIL);
+            setPassword(MODERATOR_PASSWORD);
+            submit(MODERATOR_EMAIL, MODERATOR_PASSWORD);
+          }}
+        >
+          Moderator
+        </Button>
+      </div>
+
       <p className="mt-4 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{" "}
         <Link href="/register" className="font-medium text-primary hover:underline">
@@ -134,9 +170,12 @@ export default function LoginPage() {
         </Link>
       </p>
 
-      <p className="mt-5 rounded-lg border border-border bg-muted/40 px-3 py-2 text-center font-mono text-xs text-muted-foreground">
-        demo@supportbrain.ai · demo123
-      </p>
+      <div className="mt-5 space-y-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-center font-mono text-[0.7rem] text-muted-foreground">
+        <p>demo@supportbrain.ai · demo123</p>
+        <p>admin@supportbrain.ai · admin123</p>
+        <p>developer@supportbrain.ai · developer123</p>
+        <p>moderator@supportbrain.ai · moderator123</p>
+      </div>
     </Card>
   );
 }

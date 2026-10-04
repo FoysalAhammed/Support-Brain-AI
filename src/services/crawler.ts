@@ -1,7 +1,10 @@
 import {
   buildChunks,
+  buildDatabaseTables,
+  buildDocumentSections,
   buildFacebookSections,
   buildWebsitePages,
+  estimateCounts,
   pageContent,
 } from "@/data/mock-crawl-results";
 import { mockExtractedSections } from "@/data/mock-knowledge";
@@ -17,6 +20,7 @@ import type {
   CrawlJob,
   CrawlStage,
   CrawlStageState,
+  DatabaseConfig,
   DiscoveredPage,
   EmbeddingStatus,
   SourceDetection,
@@ -79,6 +83,117 @@ export const CRAWL_STAGES: {
 ];
 
 export const CRAWL_STAGE_ORDER = CRAWL_STAGES.map((s) => s.stage);
+
+const STAGE_OVERRIDES: Partial<
+  Record<
+    KnowledgeSourceType,
+    Partial<Record<CrawlStage, { label: string; description: string }>>
+  >
+> = {
+  database: {
+    DETECTING: {
+      label: "Connecting to database",
+      description: "Verifying credentials and opening a read-only session",
+    },
+    CRAWLING: {
+      label: "Reading tables",
+      description: "Listing tables and sampling rows",
+    },
+    EXTRACTING: {
+      label: "Extracting rows",
+      description: "Pulling structured records and column values",
+    },
+    CLEANING: {
+      label: "Normalising records",
+      description: "Removing nulls and resolving joins",
+    },
+    CHUNKING: {
+      label: "Serialising records",
+      description: "Turning rows into retrievable passages",
+    },
+    EMBEDDING: {
+      label: "Embedding records",
+      description: "Generating vectors for each record",
+    },
+    INDEXING: {
+      label: "Indexing records",
+      description: "Writing vectors to the knowledge index",
+    },
+    READY: {
+      label: "Knowledge ready",
+      description: "The AI agent can now query this database",
+    },
+  },
+  document: {
+    DETECTING: {
+      label: "Reading document",
+      description: "Detecting file type, pages and layout",
+    },
+    CRAWLING: {
+      label: "Parsing pages",
+      description: "Extracting text from every page",
+    },
+    EXTRACTING: {
+      label: "Extracting content",
+      description: "Pulling headings, paragraphs and tables",
+    },
+    CLEANING: {
+      label: "Content cleaning",
+      description: "Removing headers, footers and boilerplate",
+    },
+    CHUNKING: {
+      label: "Text chunking",
+      description: "Splitting content into retrievable chunks",
+    },
+    EMBEDDING: {
+      label: "Embedding generation",
+      description: "Turning chunks into vector embeddings",
+    },
+    INDEXING: {
+      label: "Vector indexing",
+      description: "Writing vectors to the knowledge index",
+    },
+    READY: {
+      label: "Knowledge ready",
+      description: "The AI agent can now use this document",
+    },
+  },
+};
+
+const ENGINE_LABELS: Record<DatabaseConfig["engine"], string> = {
+  postgresql: "PostgreSQL",
+  mysql: "MySQL",
+  mongodb: "MongoDB",
+  supabase: "Supabase Postgres",
+};
+
+function unitLabel(type: KnowledgeSourceType, plural = true) {
+  const units: Record<KnowledgeSourceType, [string, string]> = {
+    website: ["page", "pages"],
+    facebook: ["section", "sections"],
+    document: ["document", "documents"],
+    database: ["table", "tables"],
+  };
+  const [singular, pluralForm] = units[type] ?? units.website;
+  return plural ? pluralForm : singular;
+}
+
+function blockLabel(type: KnowledgeSourceType) {
+  return type === "database" ? "rows" : "content blocks";
+}
+
+function sourceLabel(type: KnowledgeSourceType) {
+  switch (type) {
+    case "facebook":
+      return "Facebook Page";
+    case "document":
+      return "Document";
+    case "database":
+      return "Database";
+    default:
+      return "Website";
+  }
+}
 
 const jobs = new Map<string, CrawlJob>();
 
@@ -189,29 +304,101 @@ export const crawlerService = {
     };
   },
 
-  buildStages(): CrawlStageState[] {
+  detectDocument(files: { name: string; sizeKb?: number }[]): SourceDetection {
+    const valid = files.length > 0;
+    const { pages, chunks } = estimateCounts(
+      files.map((file) => file.name).join("|") || "document",
+      "document",
+    );
+    const name =
+      files.length === 1 ? files[0].name : `${files.length} documents`;
+    return {
+      type: valid ? "document" : "invalid",
+      url: "",
+      domain: "documents",
+      name: valid ? name : "",
+      valid,
+      message: valid ? "Document ready to process" : "Add at least one document to process.",
+      estimatedPages: valid ? pages : 0,
+      estimatedChunks: valid ? chunks : 0,
+    };
+  },
+
+  detectDatabase(config: DatabaseConfig): SourceDetection {
+    const valid = Boolean(config.host && config.database && config.username);
+    const { pages, chunks } = estimateCounts(
+      `${config.engine}:${config.host}/${config.database}`,
+      "database",
+    );
+    const engineLabel = ENGINE_LABELS[config.engine] ?? "Database";
+    return {
+      type: valid ? "database" : "invalid",
+      url: valid ? `db://${config.host}:${config.port}/${config.database}` : "",
+      domain: valid ? config.host : config.engine,
+      name: valid ? `${config.database} (${engineLabel})` : "",
+      valid,
+      message: valid
+        ? `${engineLabel} connection verified`
+        : "Enter a host, database name and username.",
+      estimatedPages: valid ? pages : 0,
+      estimatedChunks: valid ? chunks : 0,
+    };
+  },
+
+  async testDatabase(
+    config: DatabaseConfig,
+  ): Promise<{ ok: boolean; message: string; tables: { name: string; rows: number }[] }> {
+    await sleep(900);
+    const valid = Boolean(config.host && config.database && config.username);
+    if (!valid) {
+      return {
+        ok: false,
+        message: "Enter a host, database name and username.",
+        tables: [],
+      };
+    }
+    const tables = buildDatabaseTables()
+      .slice(0, 8)
+      .map((table) => ({ name: table.path, rows: table.blocks }));
+    return {
+      ok: true,
+      message: `${ENGINE_LABELS[config.engine] ?? "Database"} connection verified`,
+      tables,
+    };
+  },
+
+  buildStages(type: KnowledgeSourceType = "website"): CrawlStageState[] {
+    const overrides = STAGE_OVERRIDES[type];
     return CRAWL_STAGES.map((meta) => ({
       stage: meta.stage,
-      label: meta.label,
-      description: meta.description,
+      label: overrides?.[meta.stage]?.label ?? meta.label,
+      description: overrides?.[meta.stage]?.description ?? meta.description,
       status: "pending",
       progress: 0,
     }));
   },
 
   createJob(detection: SourceDetection): CrawlJob {
+    const jobType: KnowledgeSourceType =
+      detection.type === "invalid" ? "website" : detection.type;
     const pages =
-      detection.type === "facebook" ? buildFacebookSections() : buildWebsitePages();
+      jobType === "facebook"
+        ? buildFacebookSections()
+        : jobType === "database"
+          ? buildDatabaseTables()
+          : jobType === "document"
+            ? buildDocumentSections()
+            : buildWebsitePages();
     const chunks = buildChunks(detection.estimatedChunks, detection.name);
     const job: CrawlJob = {
       id: `job_${Date.now().toString(36)}`,
       url: detection.url,
-      type: detection.type === "invalid" ? "website" : detection.type,
+      type: jobType,
       sourceName: detection.name,
       domain: detection.domain,
       status: "running",
       progress: 0,
-      stages: this.buildStages(),
+      stages: this.buildStages(jobType),
       discoveredPages: pages,
       chunks,
       embedding: {
@@ -312,15 +499,16 @@ export const crawlerService = {
   },
 
   stageDetail(stage: CrawlStage, job: CrawlJob): string {
+    const units = unitLabel(job.type);
     switch (stage) {
       case "DETECTING":
-        return `${job.type === "facebook" ? "Facebook Page" : "Website"} · ${job.domain}`;
+        return `${sourceLabel(job.type)} · ${job.domain}`;
       case "CRAWLING":
-        return `${job.pagesTotal} / ${job.pagesTotal} pages fetched`;
+        return `${job.pagesTotal} / ${job.pagesTotal} ${units} read`;
       case "EXTRACTING":
-        return `${formatNumber(job.contentBlocks)} content blocks`;
+        return `${formatNumber(job.contentBlocks)} ${blockLabel(job.type)}`;
       case "CLEANING":
-        return `${formatNumber(job.contentBlocks)} blocks kept after cleanup`;
+        return `${formatNumber(job.contentBlocks)} ${blockLabel(job.type)} kept after cleanup`;
       case "CHUNKING":
         return `${formatNumber(job.embedding.total)} chunks created`;
       case "EMBEDDING":
@@ -334,12 +522,11 @@ export const crawlerService = {
     }
   },
 
-  async runCrawl(
-    url: string,
+  async runJob(
+    detection: SourceDetection,
     onUpdate: (job: CrawlJob) => void,
     isCancelled?: () => boolean,
   ): Promise<CrawlJob> {
-    const detection = this.detectSource(url);
     if (!detection.valid) throw new Error(detection.message);
     const job = this.createJob(detection);
     const emit = () => onUpdate(snapshot(job));
@@ -380,6 +567,14 @@ export const crawlerService = {
     job.completedAt = new Date().toISOString();
     emit();
     return snapshot(job);
+  },
+
+  async runCrawl(
+    url: string,
+    onUpdate: (job: CrawlJob) => void,
+    isCancelled?: () => boolean,
+  ): Promise<CrawlJob> {
+    return this.runJob(this.detectSource(url), onUpdate, isCancelled);
   },
 
   contentSections(job: CrawlJob, sourceId?: string) {
@@ -441,6 +636,40 @@ export const crawlerService = {
       },
     ];
 
+    if (job.type === "database") {
+      topics.unshift(
+        {
+          keys: ["order", "orders", "purchase", "bought", "average order"],
+          answer: `From the connected database, ${job.sourceName} records 4,182 orders in the last 30 days with an average order value of $86.40, a 3.1% cancellation rate and 62% containing two or more items.`,
+          labels: ["Orders", "Order Items", "Payments", "Shipments"],
+        },
+        {
+          keys: ["stock", "inventory", "in stock", "available", "reorder"],
+          answer:
+            "Inventory is available per SKU. 18 products are below their reorder threshold and 6 are out of stock; the Cedar lounge chair holds 240 units across three warehouses.",
+          labels: ["Inventory", "Product Catalog", "Shipments"],
+        },
+        {
+          keys: ["customer", "customers", "buyers", "accounts", "lifetime value"],
+          answer:
+            "The customers table holds 38,204 active accounts. 12% are Northwind Plus members and the average lifetime value is $412.",
+          labels: ["Customers", "Orders", "Subscriptions"],
+        },
+        {
+          keys: ["revenue", "sales", "income", "mrr", "monthly recurring", "profit"],
+          answer:
+            "Revenue for the current month is $1.28M, up 14% month over month, with subscriptions contributing $182k of monthly recurring revenue.",
+          labels: ["Payments", "Orders", "Subscriptions"],
+        },
+        {
+          keys: ["shipment", "carrier", "transit", "dispatched", "delivered"],
+          answer:
+            "Shipment records show 4,010 dispatches this month, 94% delivered within the promised window, with an average transit time of 2.8 days.",
+          labels: ["Shipments", "Orders", "Addresses"],
+        },
+      );
+    }
+
     const match = topics
       .map((topic) => ({
         topic,
@@ -481,7 +710,12 @@ export const crawlerService = {
       })
       .filter((chunk): chunk is RagRetrievedChunk => chunk !== null);
 
-    const confidence = matched ? Math.max(78, 96 - retrieved.length * 3) : 42;
+    const confidence =
+      matched && retrieved.length > 0
+        ? Math.max(78, 96 - retrieved.length * 3)
+        : matched
+          ? 55
+          : 42;
 
     return {
       id: `rag_${Date.now().toString(36)}`,
@@ -521,22 +755,27 @@ export const crawlerService = {
 
   buildJobFromSource(source: KnowledgeSource): CrawlJob {
     const pages =
-      source.type === "facebook" ? buildFacebookSections() : buildWebsitePages();
+      source.type === "facebook"
+        ? buildFacebookSections()
+        : source.type === "database"
+          ? buildDatabaseTables()
+          : source.type === "document"
+            ? buildDocumentSections()
+            : buildWebsitePages();
     const chunks = buildChunks(source.chunks || 100, source.name);
     const completedAll = source.status === "ready";
     const processingIndex = completedAll ? CRAWL_STAGES.length : 5;
+    const units = unitLabel(source.type);
     return {
       id: `job_${source.id}`,
       url: source.url ?? `upload://${source.name}`,
       type: source.type,
       sourceName: source.name,
-      domain: source.domain ?? "document",
+      domain: source.domain ?? (source.type === "database" ? "database" : "document"),
       status: completedAll ? "completed" : "running",
       progress: completedAll ? 100 : Math.round((processingIndex / CRAWL_STAGES.length) * 100),
-      stages: CRAWL_STAGES.map((meta, index) => ({
-        stage: meta.stage,
-        label: meta.label,
-        description: meta.description,
+      stages: this.buildStages(source.type).map((state, index) => ({
+        ...state,
         status:
           index < processingIndex
             ? "completed"
@@ -545,8 +784,8 @@ export const crawlerService = {
               : "pending",
         progress: index < processingIndex ? 100 : index === processingIndex ? 58 : 0,
         detail:
-          meta.stage === "CRAWLING" && source.pages
-            ? `${source.pages} / ${source.pages} pages`
+          state.stage === "CRAWLING" && source.pages
+            ? `${source.pages} / ${source.pages} ${units}`
             : undefined,
       })),
       discoveredPages: pages.map((page) => ({

@@ -12,9 +12,13 @@ import {
   Link2,
   Plus,
   Radar,
+  Server,
   Sparkles,
+  Trash2,
+  Upload,
   XCircle,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,12 +32,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { crawlerService } from "@/services/crawler";
 import { knowledgeService } from "@/services/knowledge";
 import { cn, formatNumber } from "@/lib/utils";
-import type { CrawlJob } from "@/types/crawler";
+import { sourceTypeMeta } from "@/lib/source-meta";
+import type { CrawlJob, DatabaseConfig } from "@/types/crawler";
 import type { KnowledgeSource, KnowledgeSourceType } from "@/types/knowledge";
 import { CrawlPipeline } from "./crawl-pipeline";
 import { KnowledgeTestPanel } from "./knowledge-test-panel";
@@ -61,7 +74,38 @@ const sourceTypes: {
     placeholder: "https://facebook.com/examplebusiness",
     Icon: Facebook,
   },
+  {
+    value: "document",
+    label: "Document",
+    hint: "Upload PDFs, manuals and policy documents",
+    placeholder: "",
+    Icon: FileText,
+  },
+  {
+    value: "database",
+    label: "Database",
+    hint: "Connect a read-only database for RAG",
+    placeholder: "",
+    Icon: Database,
+  },
 ];
+
+const enginePorts: Record<DatabaseConfig["engine"], string> = {
+  postgresql: "5432",
+  mysql: "3306",
+  mongodb: "27017",
+  supabase: "5432",
+};
+
+const defaultDb: DatabaseConfig = {
+  engine: "postgresql",
+  host: "db.northwind.internal",
+  port: "5432",
+  database: "northwind",
+  username: "readonly",
+  password: "",
+  ssl: true,
+};
 
 export function AddKnowledgeDialog({
   open,
@@ -76,16 +120,28 @@ export function AddKnowledgeDialog({
 }) {
   const [type, setType] = React.useState<KnowledgeSourceType>("website");
   const [url, setUrl] = React.useState("");
+  const [files, setFiles] = React.useState<{ name: string; sizeKb: number }[]>([]);
+  const [db, setDb] = React.useState<DatabaseConfig>(defaultDb);
+  const [dbTested, setDbTested] = React.useState(false);
+  const [dbTables, setDbTables] = React.useState<{ name: string; rows: number }[]>([]);
+  const [testing, setTesting] = React.useState(false);
   const [step, setStep] = React.useState<Step>("form");
   const [job, setJob] = React.useState<CrawlJob | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [tab, setTab] = React.useState("pages");
   const [saving, setSaving] = React.useState(false);
 
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   React.useEffect(() => {
     if (!open) {
       setType("website");
       setUrl("");
+      setFiles([]);
+      setDb(defaultDb);
+      setDbTested(false);
+      setDbTables([]);
+      setTesting(false);
       setStep("form");
       setJob(null);
       setError(null);
@@ -94,26 +150,72 @@ export function AddKnowledgeDialog({
     }
   }, [open]);
 
-  const detection = url.trim() ? crawlerService.detectSource(url) : null;
+  const detection = React.useMemo(() => {
+    if (type === "website" || type === "facebook") {
+      return url.trim() ? crawlerService.detectSource(url) : null;
+    }
+    if (type === "document") {
+      return files.length ? crawlerService.detectDocument(files) : null;
+    }
+    return dbTested ? crawlerService.detectDatabase(db) : null;
+  }, [type, url, files, db, dbTested]);
+
   const active = sourceTypes.find((item) => item.value === type) ?? sourceTypes[0];
+  const jobMeta = job ? sourceTypeMeta[job.type] : sourceTypeMeta.website;
+
+  const addFiles = (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const next = Array.from(list).map((file) => ({
+      name: file.name,
+      sizeKb: Math.max(1, Math.round(file.size / 1024)),
+    }));
+    setFiles((current) => [...current, ...next]);
+  };
+
+  const updateDb = (patch: Partial<DatabaseConfig>) => {
+    setDb((current) => ({ ...current, ...patch }));
+    setDbTested(false);
+  };
+
+  const testConnection = async () => {
+    setTesting(true);
+    const result = await crawlerService.testDatabase(db);
+    setTesting(false);
+    if (result.ok) {
+      setDbTested(true);
+      setDbTables(result.tables);
+      toast.success(result.message);
+    } else {
+      setDbTested(false);
+      setDbTables([]);
+      toast.error(result.message);
+    }
+  };
 
   const handleStart = async () => {
     if (!detection?.valid) return;
     setError(null);
     setStep("processing");
     try {
-      const result = await crawlerService.runCrawl(url, setJob);
+      const result =
+        type === "website" || type === "facebook"
+          ? await crawlerService.runCrawl(url, setJob)
+          : await crawlerService.runJob(detection, setJob);
       setJob(result);
       setSaving(true);
       const source = await knowledgeService.createSource({
         name: result.sourceName,
         type: result.type,
-        url: result.url,
+        url: result.url || undefined,
         domain: result.domain,
         pages: result.pagesTotal,
         contentBlocks: result.contentBlocks,
         chunks: result.embedding.total,
         organizationId,
+        engine: type === "database" ? db.engine : undefined,
+        host: type === "database" ? db.host : undefined,
+        tables: type === "database" ? result.pagesTotal : undefined,
+        rows: type === "database" ? result.contentBlocks : undefined,
       });
       setSaving(false);
       onComplete(source, result);
@@ -140,14 +242,14 @@ export function AddKnowledgeDialog({
             Add Knowledge
           </DialogTitle>
           <DialogDescription>
-            Connect a website or Facebook Page. SupportBrain crawls it, chunks the
-            content, generates embeddings and indexes it for AI answers.
+            Connect a website, Facebook Page, document or database. SupportBrain collects
+            the content, chunks it, generates embeddings and indexes it for AI answers.
           </DialogDescription>
         </DialogHeader>
 
         {step === "form" && (
           <div className="space-y-5">
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
               {sourceTypes.map((item) => {
                 const Icon = item.Icon;
                 const selected = type === item.value;
@@ -159,6 +261,7 @@ export function AddKnowledgeDialog({
                     onClick={() => {
                       setType(item.value);
                       setUrl("");
+                      setError(null);
                     }}
                     className={cn(
                       "flex items-start gap-3 rounded-xl border p-3 text-left transition-colors",
@@ -170,7 +273,9 @@ export function AddKnowledgeDialog({
                     <span
                       className={cn(
                         "flex size-9 shrink-0 items-center justify-center rounded-lg",
-                        selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                        selected
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground",
                       )}
                     >
                       <Icon className="size-4" />
@@ -186,23 +291,207 @@ export function AddKnowledgeDialog({
               })}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="knowledge-url">
-                {type === "facebook" ? "Facebook Page URL" : "Website URL"}
-              </Label>
-              <div className="relative">
-                <Link2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="knowledge-url"
-                  value={url}
-                  autoFocus
-                  onChange={(event) => setUrl(event.target.value)}
-                  placeholder={active.placeholder}
-                  className="pl-9"
-                  inputMode="url"
-                />
+            {(type === "website" || type === "facebook") && (
+              <div className="space-y-2">
+                <Label htmlFor="knowledge-url">
+                  {type === "facebook" ? "Facebook Page URL" : "Website URL"}
+                </Label>
+                <div className="relative">
+                  <Link2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="knowledge-url"
+                    value={url}
+                    autoFocus
+                    onChange={(event) => setUrl(event.target.value)}
+                    placeholder={active.placeholder}
+                    className="pl-9"
+                    inputMode="url"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+
+            {type === "document" && (
+              <div className="space-y-3">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    addFiles(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    addFiles(event.dataTransfer.files);
+                  }}
+                  className="flex w-full flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-muted/50"
+                >
+                  <span className="flex size-10 items-center justify-center rounded-full bg-primary-soft text-primary">
+                    <Upload className="size-5" />
+                  </span>
+                  <span className="text-sm font-medium">
+                    Click to upload or drop documents here
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    PDF, DOC, DOCX or TXT — mock ingestion, nothing is uploaded
+                  </span>
+                </button>
+
+                {files.length > 0 && (
+                  <ul className="space-y-2">
+                    {files.map((file, index) => (
+                      <li
+                        key={`${file.name}-${index}`}
+                        className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2"
+                      >
+                        <FileText className="size-4 shrink-0 text-primary" />
+                        <span className="min-w-0 flex-1 truncate text-sm">{file.name}</span>
+                        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                          {formatNumber(file.sizeKb)} KB
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${file.name}`}
+                          onClick={() =>
+                            setFiles((current) =>
+                              current.filter((_, itemIndex) => itemIndex !== index),
+                            )
+                          }
+                          className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-destructive"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {type === "database" && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Server className="size-4 text-primary" />
+                  Read-only database connection
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Engine</Label>
+                    <Select
+                      value={db.engine}
+                      onValueChange={(value) => {
+                        const engine = value as DatabaseConfig["engine"];
+                        updateDb({ engine, port: enginePorts[engine] });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="postgresql">PostgreSQL</SelectItem>
+                        <SelectItem value="mysql">MySQL</SelectItem>
+                        <SelectItem value="mongodb">MongoDB</SelectItem>
+                        <SelectItem value="supabase">Supabase Postgres</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-[1fr_5rem] gap-3">
+                    <div className="space-y-2">
+                      <Label>Host</Label>
+                      <Input
+                        value={db.host}
+                        onChange={(event) => updateDb({ host: event.target.value })}
+                        placeholder="db.example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Port</Label>
+                      <Input
+                        value={db.port}
+                        onChange={(event) => updateDb({ port: event.target.value })}
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Database name</Label>
+                    <Input
+                      value={db.database}
+                      onChange={(event) => updateDb({ database: event.target.value })}
+                      placeholder="northwind"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Username</Label>
+                    <Input
+                      value={db.username}
+                      onChange={(event) => updateDb({ username: event.target.value })}
+                      placeholder="readonly"
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label>Password</Label>
+                    <Input
+                      type="password"
+                      value={db.password}
+                      onChange={(event) => updateDb({ password: event.target.value })}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Credentials are used in this demo only for a simulated read-only
+                  connection. In production they are stored encrypted server-side.
+                </p>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={Boolean(db.ssl)}
+                      onCheckedChange={(checked) => updateDb({ ssl: checked })}
+                      id="db-ssl"
+                    />
+                    <Label htmlFor="db-ssl">Require SSL</Label>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    onClick={testConnection}
+                    disabled={testing}
+                  >
+                    {testing ? <Spinner /> : null}
+                    {dbTested ? <CheckCircle2 className="text-success" /> : null}
+                    {dbTested ? "Connected" : "Test connection"}
+                  </Button>
+                </div>
+                {dbTested && dbTables.length > 0 && (
+                  <div className="space-y-1.5 rounded-lg border border-success/30 bg-success-soft/40 p-3">
+                    <p className="text-xs font-medium text-success">
+                      {dbTables.length} tables discovered
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {dbTables.map((table) => (
+                        <span
+                          key={table.name}
+                          className="rounded-full bg-card px-2 py-0.5 font-mono text-[0.7rem] text-muted-foreground"
+                        >
+                          {table.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {detection && (
               <div
@@ -219,14 +508,18 @@ export function AddKnowledgeDialog({
                   ) : (
                     <XCircle className="size-4 text-destructive" />
                   )}
-                  {detection.valid ? "Valid URL" : "Invalid URL"}
+                  {detection.valid ? detection.message : "Not ready"}
                   {detection.valid && (
                     <>
                       <span className="text-muted-foreground">·</span>
                       <span className="text-success">
                         {detection.type === "facebook"
                           ? "Facebook Page detected"
-                          : "Website detected"}
+                          : detection.type === "database"
+                            ? "Database ready"
+                            : detection.type === "document"
+                              ? "Document ready"
+                              : "Website detected"}
                       </span>
                     </>
                   )}
@@ -236,7 +529,13 @@ export function AddKnowledgeDialog({
                   <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                     <div>
                       <dt className="text-xs text-muted-foreground">
-                        {detection.type === "facebook" ? "Page" : "Domain"}
+                        {detection.type === "facebook"
+                          ? "Page"
+                          : detection.type === "database"
+                            ? "Database"
+                            : detection.type === "document"
+                              ? "Files"
+                              : "Domain"}
                       </dt>
                       <dd className="truncate font-medium">{detection.name}</dd>
                     </div>
@@ -246,7 +545,10 @@ export function AddKnowledgeDialog({
                     </div>
                     <div>
                       <dt className="text-xs text-muted-foreground">
-                        {detection.type === "facebook" ? "Sections" : "Pages found"}
+                        {detection.type === "invalid"
+                          ? "Items"
+                          : sourceTypeMeta[detection.type].pageNoun}{" "}
+                        found
                       </dt>
                       <dd className="font-medium tabular-nums">
                         {detection.estimatedPages}
@@ -265,8 +567,8 @@ export function AddKnowledgeDialog({
 
                 {detection.valid && detection.type === "facebook" && (
                   <p className="text-xs text-muted-foreground">
-                    Only publicly available Page content is fetched. No login,
-                    access token or credentials are ever required.
+                    Only publicly available Page content is fetched. No login, access
+                    token or credentials are ever required.
                   </p>
                 )}
               </div>
@@ -306,12 +608,12 @@ export function AddKnowledgeDialog({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <Counter
-                    label="Pages"
+                    label={sourceTypeMeta[job.type].pageNoun}
                     value={`${job.pagesCrawled}/${job.pagesTotal}`}
                     icon={<FileText />}
                   />
                   <Counter
-                    label="Content blocks"
+                    label={sourceTypeMeta[job.type].blockNoun}
                     value={formatNumber(job.contentBlocks)}
                     icon={<Layers />}
                   />
@@ -330,14 +632,17 @@ export function AddKnowledgeDialog({
                 <div className="rounded-xl border border-border bg-card p-3 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Vector index</span>
-                    <Badge variant={job.embedding.indexStatus === "ready" ? "success" : "warning"}>
+                    <Badge
+                      variant={job.embedding.indexStatus === "ready" ? "success" : "warning"}
+                    >
                       {job.embedding.indexStatus === "ready" ? "Ready" : "Building"}
                     </Badge>
                   </div>
                   <div className="mt-2 space-y-1 font-mono text-[0.7rem] text-muted-foreground">
                     <p className="truncate">{job.embedding.indexName}</p>
                     <p>
-                      {job.embedding.dimensions}d · {formatNumber(job.embedding.vectorsPerSecond)} vec/s
+                      {job.embedding.dimensions}d ·{" "}
+                      {formatNumber(job.embedding.vectorsPerSecond)} vec/s
                     </p>
                   </div>
                 </div>
@@ -353,16 +658,16 @@ export function AddKnowledgeDialog({
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">Knowledge ready</p>
                 <p className="text-xs text-muted-foreground">
-                  {formatNumber(job.embedding.total)} chunks embedded and indexed.
-                  Your AI agent can now answer questions from this source.
+                  {formatNumber(job.embedding.total)} chunks embedded and indexed. Your AI
+                  agent can now answer questions from this source.
                 </p>
               </div>
               {saving && <Spinner className="text-muted-foreground" />}
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-              <Stat label="Pages" value={formatNumber(job.pagesTotal)} />
-              <Stat label="Content blocks" value={formatNumber(job.contentBlocks)} />
+              <Stat label={jobMeta.pageNoun} value={formatNumber(job.pagesTotal)} />
+              <Stat label={jobMeta.blockNoun} value={formatNumber(job.contentBlocks)} />
               <Stat label="Chunks" value={formatNumber(job.embedding.total)} />
               <Stat label="Embeddings" value={formatNumber(job.embedding.total)} />
               <Stat label="Vector index" value="Ready" tone="success" />
@@ -370,7 +675,7 @@ export function AddKnowledgeDialog({
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList className="w-full justify-start overflow-x-auto">
-                <TabsTrigger value="pages">Discovered pages</TabsTrigger>
+                <TabsTrigger value="pages">Discovered {jobMeta.pageNoun.toLowerCase()}</TabsTrigger>
                 <TabsTrigger value="content">Content preview</TabsTrigger>
                 <TabsTrigger value="chunks">Chunks & embeddings</TabsTrigger>
                 <TabsTrigger value="test">
@@ -388,9 +693,7 @@ export function AddKnowledgeDialog({
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <CheckCircle2 className="size-3.5 shrink-0 text-success" />
-                        <span className="truncate text-sm font-medium">
-                          {page.title}
-                        </span>
+                        <span className="truncate text-sm font-medium">{page.title}</span>
                         <span className="truncate font-mono text-[0.7rem] text-muted-foreground">
                           {page.path}
                         </span>
@@ -406,10 +709,7 @@ export function AddKnowledgeDialog({
               <TabsContent value="content">
                 <ul className="space-y-3">
                   {sections.map((section) => (
-                    <li
-                      key={section.id}
-                      className="rounded-lg border border-border bg-card p-3"
-                    >
+                    <li key={section.id} className="rounded-lg border border-border bg-card p-3">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-medium">{section.heading}</span>
                         <span className="text-xs tabular-nums text-muted-foreground">
@@ -444,10 +744,7 @@ export function AddKnowledgeDialog({
                   </div>
                   <ul className="space-y-2">
                     {job.chunks.slice(0, 8).map((chunk) => (
-                      <li
-                        key={chunk.id}
-                        className="rounded-lg border border-border bg-card p-3"
-                      >
+                      <li key={chunk.id} className="rounded-lg border border-border bg-card p-3">
                         <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                           <span className="font-mono">
                             #{chunk.index} · {chunk.pageTitle}
@@ -475,7 +772,13 @@ export function AddKnowledgeDialog({
                 Cancel
               </Button>
               <Button onClick={handleStart} disabled={!detection?.valid}>
-                {type === "facebook" ? "Start collection" : "Start crawling"}
+                {type === "facebook"
+                  ? "Start collection"
+                  : type === "document"
+                    ? "Process documents"
+                    : type === "database"
+                      ? "Start sync"
+                      : "Start crawling"}
               </Button>
             </>
           )}

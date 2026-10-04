@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/components/providers/auth-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { adminNav, dashboardNav, isNavActive, type NavItem } from "./nav-config";
+import { roleLabel } from "@/lib/permissions";
 import { cn, initials } from "@/lib/utils";
 
 const segmentLabels: Record<string, string> = {
@@ -129,8 +130,10 @@ function SidebarContent({
   variant: "dashboard" | "admin";
   onNavigate?: () => void;
 }) {
-  const { isAdmin } = useAuth();
-  const items = variant === "admin" ? adminNav : dashboardNav;
+  const { isAdmin, can } = useAuth();
+  const items = (variant === "admin" ? adminNav : dashboardNav).filter(
+    (item) => !item.permission || can(item.permission),
+  );
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">
@@ -168,7 +171,7 @@ function SidebarContent({
 function Topbar({ variant }: { variant: "dashboard" | "admin" }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAdmin, logout } = useAuth();
+  const { user, isAdmin, isDeveloper, role, logout } = useAuth();
   const { resolvedTheme, toggle } = useTheme();
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -291,6 +294,11 @@ function Topbar({ variant }: { variant: "dashboard" | "admin" }) {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{user?.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+                {role && (
+                  <Badge variant={isDeveloper ? "accent" : "neutral"} className="mt-1">
+                    {isDeveloper ? "Platform Developer" : roleLabel[role]}
+                  </Badge>
+                )}
               </div>
             </div>
             <DropdownMenuSeparator />

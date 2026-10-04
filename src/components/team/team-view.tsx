@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { MoreHorizontal, UserPlus } from "lucide-react";
+import { MoreHorizontal, Radio, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -41,27 +42,41 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useAuth } from "@/components/providers/auth-provider";
+import { channelService } from "@/services/channels";
 import { teamService } from "@/services/team";
 import { initials, relativeTime } from "@/lib/utils";
+import type { ChannelConnection } from "@/types/channel";
 import type { User, UserRole } from "@/types/user";
 
-const roles: UserRole[] = ["owner", "admin", "agent", "viewer"];
+const roles: UserRole[] = ["admin", "moderator", "agent", "viewer"];
 
 export function TeamView() {
+  const { can } = useAuth();
+  const canManage = can("team:manage");
+  const canAllocate = can("team:allocate");
+
   const [members, setMembers] = React.useState<User[]>([]);
+  const [channels, setChannels] = React.useState<ChannelConnection[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [inviteEmail, setInviteEmail] = React.useState("");
   const [inviteRole, setInviteRole] = React.useState<UserRole>("agent");
   const [busy, setBusy] = React.useState(false);
+  const [assignTarget, setAssignTarget] = React.useState<User | null>(null);
+  const [assignIds, setAssignIds] = React.useState<string[]>([]);
+  const [savingAssign, setSavingAssign] = React.useState(false);
 
   React.useEffect(() => {
     let mounted = true;
-    teamService.list().then((result) => {
-      if (!mounted) return;
-      setMembers(result);
-      setLoading(false);
-    });
+    Promise.all([teamService.list(), channelService.list()]).then(
+      ([membersResult, channelsResult]) => {
+        if (!mounted) return;
+        setMembers(membersResult);
+        setChannels(channelsResult);
+        setLoading(false);
+      },
+    );
     return () => {
       mounted = false;
     };
@@ -107,16 +122,54 @@ export function TeamView() {
     toast.success(`${member.name} removed`);
   };
 
+  const openAllocation = (member: User) => {
+    setAssignTarget(member);
+    setAssignIds(member.channelIds ?? []);
+  };
+
+  const toggleAssignment = (channelId: string, checked: boolean) => {
+    setAssignIds((current) =>
+      checked ? [...new Set([...current, channelId])] : current.filter((id) => id !== channelId),
+    );
+  };
+
+  const saveAssignments = async () => {
+    if (!assignTarget) return;
+    setSavingAssign(true);
+    const updated = await teamService.updateChannels(assignTarget.id, assignIds);
+    await Promise.all(
+      channels.map((channel) => {
+        const next = new Set(channel.assignedUserIds ?? []);
+        if (assignIds.includes(channel.id)) next.add(assignTarget.id);
+        else next.delete(assignTarget.id);
+        return channelService.assignUsers(channel.id, Array.from(next));
+      }),
+    );
+    setSavingAssign(false);
+    if (updated) {
+      setMembers((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+    }
+    setAssignTarget(null);
+    toast.success("Channel allocation updated", {
+      description: `${assignIds.length} channel${assignIds.length === 1 ? "" : "s"} assigned.`,
+    });
+  };
+
+  const channelName = (id: string) => channels.find((channel) => channel.id === id)?.name ?? id;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Team</h1>
           <p className="text-sm text-muted-foreground">
-            Manage who can access your workspace and what they can do.
+            Manage who can access your workspace, what they can do, and which channels
+            they moderate.
           </p>
         </div>
-        <Button onClick={() => setInviteOpen(true)}>
+        <Button onClick={() => setInviteOpen(true)} disabled={!canManage}>
           <UserPlus />
           Invite member
         </Button>
@@ -128,6 +181,7 @@ export function TeamView() {
             <TableRow>
               <TableHead>Member</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead className="hidden lg:table-cell">Channels</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="hidden md:table-cell">Last active</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -137,77 +191,112 @@ export function TeamView() {
             {loading
               ? Array.from({ length: 5 }).map((_, index) => (
                   <TableRow key={index}>
-                    <TableCell colSpan={5}>
+                    <TableCell colSpan={6}>
                       <div className="h-10 animate-pulse rounded bg-muted" />
                     </TableCell>
                   </TableRow>
                 ))
-              : members.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="size-9">
-                          <AvatarFallback>{initials(member.name)}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{member.name}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {member.email}
-                          </p>
+              : members.map((member) => {
+                  const assigned = member.channelIds ?? [];
+                  return (
+                    <TableRow key={member.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="size-9">
+                            <AvatarFallback>{initials(member.name)}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{member.name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {member.email}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {member.role === "owner" ? (
-                        <Badge variant="default">Owner</Badge>
-                      ) : (
-                        <Select
-                          value={member.role}
-                          onValueChange={(value) => changeRole(member, value as UserRole)}
-                        >
-                          <SelectTrigger className="h-8 w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {roles.map((role) => (
-                              <SelectItem key={role} value={role} className="capitalize">
-                                {role}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={member.status} />
-                    </TableCell>
-                    <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                      {relativeTime(member.lastActiveAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon-sm" aria-label="Member actions">
-                            <MoreHorizontal />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => toggleStatus(member)}>
-                            {member.status === "active" ? "Deactivate" : "Activate"}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            destructive
-                            disabled={member.role === "owner"}
-                            onSelect={() => remove(member)}
+                      </TableCell>
+                      <TableCell>
+                        {member.role === "owner" ? (
+                          <Badge variant="default">Owner</Badge>
+                        ) : (
+                          <Select
+                            value={member.role}
+                            disabled={!canManage}
+                            onValueChange={(value) => changeRole(member, value as UserRole)}
                           >
-                            Remove member
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                            <SelectTrigger className="h-8 w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {roles.map((role) => (
+                                <SelectItem key={role} value={role} className="capitalize">
+                                  {role}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        <button
+                          type="button"
+                          onClick={() => openAllocation(member)}
+                          disabled={!canAllocate}
+                          className="flex flex-wrap items-center gap-1 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label={`Allocate channels for ${member.name}`}
+                        >
+                          {assigned.length === 0 ? (
+                            <span className="text-xs text-muted-foreground">Unassigned</span>
+                          ) : (
+                            assigned.slice(0, 2).map((id) => (
+                              <Badge key={id} variant="neutral">
+                                {channelName(id)}
+                              </Badge>
+                            ))
+                          )}
+                          {assigned.length > 2 && (
+                            <Badge variant="neutral">+{assigned.length - 2}</Badge>
+                          )}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={member.status} />
+                      </TableCell>
+                      <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
+                        {relativeTime(member.lastActiveAt)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" aria-label="Member actions">
+                              <MoreHorizontal />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              disabled={!canAllocate}
+                              onSelect={() => openAllocation(member)}
+                            >
+                              <Radio /> Allocate channels
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              disabled={!canManage}
+                              onSelect={() => toggleStatus(member)}
+                            >
+                              {member.status === "active" ? "Deactivate" : "Activate"}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              destructive
+                              disabled={!canManage || member.role === "owner"}
+                              onSelect={() => remove(member)}
+                            >
+                              Remove member
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
           </TableBody>
         </Table>
       </Card>
@@ -238,13 +327,11 @@ export function TeamView() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {roles
-                    .filter((role) => role !== "owner")
-                    .map((role) => (
-                      <SelectItem key={role} value={role} className="capitalize">
-                        {role}
-                      </SelectItem>
-                    ))}
+                  {roles.map((role) => (
+                    <SelectItem key={role} value={role} className="capitalize">
+                      {role}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -256,6 +343,50 @@ export function TeamView() {
             <Button onClick={invite} disabled={busy}>
               {busy ? <Spinner /> : null}
               Send invite
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(assignTarget)}
+        onOpenChange={(open) => !open && setAssignTarget(null)}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Allocate channels</DialogTitle>
+            <DialogDescription>
+              Choose which channels {assignTarget?.name} is responsible for moderating.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {channels.map((channel) => (
+              <label
+                key={channel.id}
+                className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+              >
+                <Checkbox
+                  checked={assignIds.includes(channel.id)}
+                  onCheckedChange={(checked) =>
+                    toggleAssignment(channel.id, checked === true)
+                  }
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{channel.name}</span>
+                  <span className="block truncate text-xs capitalize text-muted-foreground">
+                    {channel.status === "connected" ? "Connected" : "Not connected"}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveAssignments} disabled={savingAssign}>
+              {savingAssign ? <Spinner /> : null}
+              Save allocation
             </Button>
           </DialogFooter>
         </DialogContent>

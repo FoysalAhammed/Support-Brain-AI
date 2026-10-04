@@ -1,14 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Database,
-  Facebook,
-  FileText,
-  Globe,
-  Layers,
-  Sparkles,
-} from "lucide-react";
+import { Database, Layers, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
@@ -25,6 +18,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { crawlerService } from "@/services/crawler";
 import { formatNumber, relativeTime } from "@/lib/utils";
+import { sourceMeta } from "@/lib/source-meta";
 import type { CrawlJob } from "@/types/crawler";
 import type { KnowledgeSource } from "@/types/knowledge";
 import { CrawlPipeline } from "./crawl-pipeline";
@@ -67,7 +61,8 @@ export function SourceDetailSheet({
     [job, source],
   );
 
-  const Icon = source?.type === "facebook" ? Facebook : source?.type === "document" ? FileText : Globe;
+  const meta = sourceMeta(source?.type ?? "website");
+  const Icon = meta.Icon;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -80,7 +75,7 @@ export function SourceDetailSheet({
             <div className="min-w-0 flex-1">
               <SheetTitle className="truncate">{source?.name}</SheetTitle>
               <SheetDescription className="truncate">
-                {source?.type === "facebook" ? "Facebook Page" : source?.type}
+                {meta.label}
                 {source?.domain ? ` · ${source.domain}` : ""}
               </SheetDescription>
             </div>
@@ -100,8 +95,8 @@ export function SourceDetailSheet({
           ) : (
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <Metric label="Pages" value={formatNumber(source.pages || job.pagesTotal)} />
-                <Metric label="Content blocks" value={formatNumber(source.contentBlocks)} />
+                <Metric label={meta.pageNoun} value={formatNumber(source.pages || job.pagesTotal)} />
+                <Metric label={meta.blockNoun} value={formatNumber(source.contentBlocks)} />
                 <Metric label="Chunks" value={formatNumber(source.chunks)} />
                 <Metric label="Embeddings" value={formatNumber(source.embeddings)} />
               </div>

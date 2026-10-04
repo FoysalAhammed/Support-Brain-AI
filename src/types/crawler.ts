@@ -1,5 +1,5 @@
 import type { ID } from "./common";
-import type { KnowledgeSourceType } from "./knowledge";
+import type { DatabaseEngine, KnowledgeSourceType } from "./knowledge";
 
 export type CrawlStage =
   | "DETECTING"
@@ -31,6 +31,16 @@ export interface SourceDetection {
   message: string;
   estimatedPages: number;
   estimatedChunks: number;
+}
+
+export interface DatabaseConfig {
+  engine: DatabaseEngine;
+  host: string;
+  port: string;
+  database: string;
+  username: string;
+  password: string;
+  ssl?: boolean;
 }
 
 export type DiscoveredPageStatus =

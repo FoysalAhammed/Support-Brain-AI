@@ -1,5 +1,5 @@
 import type { ChunkPreview, DiscoveredPage } from "@/types/crawler";
-import type { ExtractedSection } from "@/types/knowledge";
+import type { ExtractedSection, KnowledgeSourceType } from "@/types/knowledge";
 
 export const websitePageCatalog: { title: string; path: string }[] = [
   { title: "Home", path: "/" },
@@ -41,6 +41,34 @@ export const facebookSectionCatalog: { title: string; path: string }[] = [
   { title: "FAQ", path: "faq" },
   { title: "Reviews", path: "reviews" },
   { title: "Page Information", path: "page-info" },
+];
+
+export const databaseTableCatalog: { title: string; path: string }[] = [
+  { title: "Orders", path: "public.orders" },
+  { title: "Order Items", path: "public.order_items" },
+  { title: "Customers", path: "public.customers" },
+  { title: "Product Catalog", path: "public.products" },
+  { title: "Inventory", path: "public.inventory" },
+  { title: "Payments", path: "public.payments" },
+  { title: "Shipments", path: "public.shipments" },
+  { title: "Subscriptions", path: "public.subscriptions" },
+  { title: "Support Tickets", path: "public.support_tickets" },
+  { title: "Product Reviews", path: "public.reviews" },
+  { title: "Carts", path: "public.carts" },
+  { title: "Addresses", path: "public.addresses" },
+];
+
+export const documentSectionCatalog: { title: string; path: string }[] = [
+  { title: "Cover", path: "01-cover" },
+  { title: "Warranty Terms", path: "02-warranty-terms" },
+  { title: "Coverage Period", path: "03-coverage-period" },
+  { title: "What Is Covered", path: "04-what-is-covered" },
+  { title: "Exclusions", path: "05-exclusions" },
+  { title: "Claim Process", path: "06-claim-process" },
+  { title: "Returns Policy", path: "07-returns-policy" },
+  { title: "Refund Timelines", path: "08-refunds" },
+  { title: "Shipping Damage", path: "09-shipping-damage" },
+  { title: "Contact & Escalation", path: "10-contact" },
 ];
 
 export const pageContent: Record<string, string> = {
@@ -107,6 +135,50 @@ export const pageContent: Record<string, string> = {
     "Reviews & Recommendations — a 4.8 / 5 average from 3,200 recommendations, with praise for build quality and delivery speed.",
   "Page Information":
     "Page Information — verified business page with opening hours, address and current seasonal promotions published publicly.",
+  Orders:
+    "public.orders — 4,182 orders in the last 30 days with status, customer_id, total, currency, discount and created_at. Average order value $86.40, cancellation rate 3.1%, 62% of orders include at least two items.",
+  "Order Items":
+    "public.order_items — 9,640 line items linking orders to products with quantity, unit_price and line_total. The Alder Lounge Chair and Marlow Oak Table are the most frequently ordered SKUs.",
+  Customers:
+    "public.customers — 38,204 active accounts with email, signup date, membership tier and lifetime_value. 12% are Northwind Plus members and the average lifetime value is $412.",
+  "Product Catalog":
+    "public.products — 1,240 SKUs with name, category, price, cost and supplier. Home and Living categories account for 48% of revenue.",
+  Inventory:
+    "public.inventory — stock on hand per SKU per warehouse. 18 products are below their reorder threshold and 6 are out of stock; the Cedar lounge chair holds 240 units across three warehouses.",
+  Payments:
+    "public.payments — 5,904 settled payments this month with method, provider, amount and status. Card payments are 71%, digital wallets 22% and buy-now-pay-later 7%.",
+  Shipments:
+    "public.shipments — 4,010 shipments with carrier, tracking_number, dispatched_at and delivered_at. 94% delivered within the promised window and the average transit time is 2.8 days.",
+  Subscriptions:
+    "public.subscriptions — 4,580 active memberships contributing $182k monthly recurring revenue, with a 3.4% monthly churn rate.",
+  "Support Tickets":
+    "public.support_tickets — 1,204 tickets in the last 30 days with channel, priority, sentiment and resolution time. 87% were resolved by the AI agent without handoff.",
+  "Product Reviews":
+    "public.reviews — 12,480 verified reviews averaging 4.8 out of 5, most frequently praising build quality, delivery speed and responsive support.",
+  Carts:
+    "public.carts — 6,730 carts, 24% of which are abandoned, representing $214k of recoverable revenue.",
+  Addresses:
+    "public.addresses — 44,120 saved shipping addresses across 42 countries, with the United States, Canada and the United Kingdom the top destinations.",
+  Cover:
+    "Northwind Commerce — Warranty & Returns Policy. Version 4.2, effective January 2026. This document describes the 5-year craftsmanship guarantee, the 60-day return window and how to claim.",
+  "Warranty Terms":
+    "Every Northwind product carries a 5-year craftsmanship guarantee covering structural defects and manufacturing faults from the date of delivery.",
+  "Coverage Period":
+    "The guarantee runs for 60 months from the delivery date. Northwind Plus members receive an additional 12 months of coverage on all eligible items.",
+  "What Is Covered":
+    "Covered: structural failure, joint separation, frame defects, manufacturing faults and material failure under normal domestic use.",
+  Exclusions:
+    "Not covered: normal wear and tear, misuse, accidental damage, exposure to extreme humidity, and commercial use beyond the trade programme terms.",
+  "Claim Process":
+    "Claims can be filed from your account or by contacting support with your order number and photos. Approved replacements ship within 3 business days.",
+  "Returns Policy":
+    "Unused items may be returned within 60 days of delivery for a full refund. Members on Northwind Plus receive a 90-day window. Made-to-order items are final sale.",
+  "Refund Timelines":
+    "Refunds are issued to the original payment method within 5 business days of the returned item arriving at our warehouse.",
+  "Shipping Damage":
+    "Report damage within 48 hours of delivery with photos and we will arrange a replacement or refund at no cost.",
+  "Contact & Escalation":
+    "Reach the warranty team seven days a week between 8am and 8pm Pacific Time. Unresolved claims are escalated to a senior specialist within one business day.",
 };
 
 const chunkTemplates = [
@@ -154,6 +226,28 @@ export function buildFacebookSections(): DiscoveredPage[] {
   }));
 }
 
+export function buildDatabaseTables(limit = 12): DiscoveredPage[] {
+  return databaseTableCatalog.slice(0, limit).map((table, index) => ({
+    id: `tbl_${index + 1}`,
+    title: table.title,
+    path: table.path,
+    status: "pending",
+    words: 400 + ((index * 311) % 3200),
+    blocks: 900 + ((index * 731) % 6400),
+  }));
+}
+
+export function buildDocumentSections(limit = 10): DiscoveredPage[] {
+  return documentSectionCatalog.slice(0, limit).map((section, index) => ({
+    id: `doc_${index + 1}`,
+    title: section.title,
+    path: section.path,
+    status: "pending",
+    words: 120 + ((index * 97) % 520),
+    blocks: 6 + ((index * 11) % 22),
+  }));
+}
+
 export function buildChunks(count: number, sourceName: string): ChunkPreview[] {
   const previewCount = Math.min(count, 24);
   return Array.from({ length: previewCount }).map((_, index) => {
@@ -191,19 +285,36 @@ export function buildContentSections(
   });
 }
 
-export function estimateCounts(seed: string, type: "website" | "facebook") {
+export function estimateCounts(seed: string, type: KnowledgeSourceType) {
   let hash = 0;
   for (let i = 0; i < seed.length; i += 1) {
     hash = (hash * 31 + seed.charCodeAt(i)) % 100000;
   }
-  if (type === "website") {
-    const pages = 22 + (hash % 12);
-    const blocks = pages * (44 + (hash % 18));
-    const chunks = blocks * 4;
-    return { pages, blocks, chunks };
+  switch (type) {
+    case "website": {
+      const pages = 22 + (hash % 12);
+      const blocks = pages * (44 + (hash % 18));
+      return { pages, blocks, chunks: blocks * 4 };
+    }
+    case "facebook": {
+      const blocks = 380 + (hash % 140);
+      return { pages: 8, blocks, chunks: blocks * 4 };
+    }
+    case "document": {
+      const pages = 10;
+      const blocks = 90 + (hash % 160);
+      return { pages, blocks, chunks: blocks * 3 };
+    }
+    case "database": {
+      const tables = 12;
+      const rows = 42000 + (hash % 12000);
+      const chunks = tables * (240 + (hash % 60));
+      return { pages: tables, blocks: rows, chunks };
+    }
+    default: {
+      const pages = 22 + (hash % 12);
+      const blocks = pages * (44 + (hash % 18));
+      return { pages, blocks, chunks: blocks * 4 };
+    }
   }
-  const sections = 8;
-  const blocks = 380 + (hash % 140);
-  const chunks = blocks * 4;
-  return { pages: sections, blocks, chunks };
 }

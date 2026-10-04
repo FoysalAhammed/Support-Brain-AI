@@ -14,6 +14,12 @@ deployable to Vercel as-is. There is **no backend**: every page reads from
 `src/services/*` which return mock data with small `sleep()` delays. Swapping in
 a real API later is a service-level change only.
 
+Business knowledge can come from four source types — **Website, Facebook Page,
+Document (PDF) and Database** — and an embeddable **floating chat widget**
+(`src/components/widget/chat-widget.tsx`) can be dropped onto any site; its
+conversations land in the dashboard inbox. Roles are owner / admin / moderator /
+agent / viewer, with channel allocation and a developer platform owner.
+
 ## Stack
 
 - Next.js 15 (App Router) · React 19 · TypeScript (strict)
@@ -35,17 +41,20 @@ npm start          # serve the production build
 
 - Support console: `demo@supportbrain.ai` / `demo123`
 - Platform admin (for `/admin`, requires an `admin@` email): `admin@supportbrain.ai` / `admin123`
+- Developer / platform owner (full `/admin` + `/admin/settings` control): `developer@supportbrain.ai` / `developer123`
+- Moderator (channel allocation demo): `moderator@supportbrain.ai` / `moderator123`
 
 ## Routes
 
 ```
 /                      /login  /register  /forgot-password
-/pricing               /chat
+/pricing               /chat            /demo/store
 /dashboard             /dashboard/inbox   /dashboard/inbox/[conversationId]
 /dashboard/agent       /dashboard/knowledge  /dashboard/knowledge/[sourceId]
 /dashboard/channels    /dashboard/analytics  /dashboard/team
 /dashboard/billing     /dashboard/settings
 /admin                 /admin/organizations  /admin/organizations/[id]
+/admin/settings
 ```
 
 ## Architecture rules (follow these)
@@ -92,6 +101,9 @@ npm run typecheck && npm run build
 ## Current status
 
 All routes above are implemented and build/typecheck clean. The knowledge
-ingestion pipeline (Website/Facebook → crawl → chunk → embed → index → RAG) is
-the centrepiece and is fully wired. See `docs/PROJECT_CONTEXT.md` for the
-per-area breakdown and the list of known limitations / next steps.
+ingestion pipeline (Website / Facebook / Document / Database → collect → chunk →
+embed → index → RAG) is the centrepiece and is fully wired, including the
+embeddable floating chat widget (landing page + `/demo/store`) that feeds the
+dashboard inbox, moderator channel allocation, and a developer platform-owner
+console (`/admin/settings`). See `docs/PROJECT_CONTEXT.md` for the per-area
+breakdown and the list of known limitations / next steps.

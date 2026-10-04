@@ -95,6 +95,7 @@ src/
 /pricing               plans + monthly/yearly toggle + comparison table + FAQ
 /login /register /forgot-password   auth (route group `(auth)`, shared layout)
 /chat                  public customer-facing AI chat
+/demo/store            fake business site showing the embeddable floating widget
 /dashboard             overview KPIs + charts + recent conversations/sources
 /dashboard/inbox       conversation list + thread + details (full-screen mode)
 /dashboard/inbox/[conversationId]   standalone conversation + full-screen
@@ -109,6 +110,7 @@ src/
 /admin                 platform overview (admin only)
 /admin/organizations   tenant table
 /admin/organizations/[id]   tenant detail
+/admin/settings        developer platform-owner console (models, flags, limits)
 ```
 
 ---
@@ -159,6 +161,7 @@ retrieved Services / About Us / FAQ.
 | `team` | list/invite/updateRole/setStatus/remove |
 | `billing` | plans, state, changePlan, cancelPlan |
 | `organizations` | list/get/current/stats |
+| `platform` | admin models / feature flags / plan limits (`/admin/settings`) |
 
 All are plain objects with async methods — the exact shape to replace with
 `fetch("/api/...")` calls later.
@@ -196,10 +199,12 @@ Do not introduce three.js/GSAP.
 
 ## 10. Known limitations / gotchas
 
-- **In-memory state.** New knowledge sources / sent messages live in the client
-  module. A **hard refresh** resets them; the seeded sources (`src_website`,
-  `src_facebook`, `src_warranty`) always exist. New-source detail pages work via
-  client navigation but 404 on a hard refresh.
+- **In-memory state.** New knowledge sources live in the client module, so a
+  **hard refresh** resets them and new-source detail pages 404 (client navigation
+  works). Seeded sources: `src_website`, `src_facebook`, `src_warranty`,
+  `src_database`. **Conversations are the exception** — `conversations` +
+  `messages` persist to `localStorage` under `supportbrain.conversations.v1`, so
+  widget/inbox conversations survive a refresh.
 - **Facebook page name** is derived from the URL handle, so
   `facebook.com/examplebusiness` shows "Examplebusiness" (no reliable way to get
   "Example Business" from the badge string).

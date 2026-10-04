@@ -22,6 +22,8 @@ export interface ChannelConnection {
   connectedAt?: string;
   handle?: string;
   configurable: boolean;
+  /** Team members allocated to handle this channel. */
+  assignedUserIds?: ID[];
 }
 
 export interface WidgetConfig {

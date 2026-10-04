@@ -1,8 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Check,
+  Code2,
+  Copy,
+  ExternalLink,
   Facebook,
   Globe,
   Headphones,
@@ -12,11 +16,14 @@ import {
   Phone,
   Settings2,
   Sparkles,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -38,10 +45,15 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { buildEmbedSnippet } from "@/components/widget/embed-snippet";
+import { useAuth } from "@/components/providers/auth-provider";
 import { channelService } from "@/services/channels";
-import { formatNumber } from "@/lib/utils";
+import { teamService } from "@/services/team";
+import { formatNumber, initials } from "@/lib/utils";
 import type { ChannelConnection, ChannelType, WidgetConfig } from "@/types/channel";
+import type { User } from "@/types/user";
 
 const channelIcons: Record<ChannelType, React.ElementType> = {
   website: Globe,
@@ -53,6 +65,8 @@ const channelIcons: Record<ChannelType, React.ElementType> = {
 };
 
 export function ChannelsView() {
+  const { can } = useAuth();
+  const canAllocate = can("team:allocate");
   const [channels, setChannels] = React.useState<ChannelConnection[]>([]);
   const [widget, setWidget] = React.useState<WidgetConfig | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -60,17 +74,25 @@ export function ChannelsView() {
   const [connectTarget, setConnectTarget] = React.useState<ChannelConnection | null>(null);
   const [handle, setHandle] = React.useState("");
   const [widgetOpen, setWidgetOpen] = React.useState(false);
+  const [widgetTab, setWidgetTab] = React.useState<"design" | "embed">("design");
+  const [members, setMembers] = React.useState<User[]>([]);
+  const [assignTarget, setAssignTarget] = React.useState<ChannelConnection | null>(null);
+  const [assignIds, setAssignIds] = React.useState<string[]>([]);
+  const [savingAssign, setSavingAssign] = React.useState(false);
 
   React.useEffect(() => {
     let mounted = true;
-    Promise.all([channelService.list(), channelService.getWidgetConfig()]).then(
-      ([loadedChannels, loadedWidget]) => {
-        if (!mounted) return;
-        setChannels(loadedChannels);
-        setWidget(loadedWidget);
-        setLoading(false);
-      },
-    );
+    Promise.all([
+      channelService.list(),
+      channelService.getWidgetConfig(),
+      teamService.list(),
+    ]).then(([loadedChannels, loadedWidget, loadedMembers]) => {
+      if (!mounted) return;
+      setChannels(loadedChannels);
+      setWidget(loadedWidget);
+      setMembers(loadedMembers);
+      setLoading(false);
+    });
     return () => {
       mounted = false;
     };
@@ -107,6 +129,34 @@ export function ChannelsView() {
     setWidget(updated);
   };
 
+  const assignedMembers = (channel: ChannelConnection) =>
+    members.filter((member) => (channel.assignedUserIds ?? []).includes(member.id));
+
+  const openAssign = (channel: ChannelConnection) => {
+    setAssignTarget(channel);
+    setAssignIds(channel.assignedUserIds ?? []);
+  };
+
+  const saveAssign = async () => {
+    if (!assignTarget) return;
+    setSavingAssign(true);
+    const updated = await channelService.assignUsers(assignTarget.id, assignIds);
+    updateChannel(updated);
+    await Promise.all(
+      members.map((member) => {
+        const next = new Set(member.channelIds ?? []);
+        if (assignIds.includes(member.id)) next.add(assignTarget.id);
+        else next.delete(assignTarget.id);
+        return teamService.updateChannels(member.id, Array.from(next));
+      }),
+    );
+    const fresh = await teamService.list();
+    setMembers(fresh);
+    setSavingAssign(false);
+    setAssignTarget(null);
+    toast.success("Channel team updated");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -116,7 +166,13 @@ export function ChannelsView() {
             Connect every place your customers talk to you.
           </p>
         </div>
-        <Button variant="outline" onClick={() => setWidgetOpen(true)}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setWidgetTab("design");
+            setWidgetOpen(true);
+          }}
+        >
           <Settings2 />
           Configure widget
         </Button>
@@ -162,6 +218,32 @@ export function ChannelsView() {
                     </div>
                   )}
 
+                  <div className="mt-4 flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Assigned</span>
+                    <div className="flex items-center -space-x-1.5">
+                      {assignedMembers(channel).slice(0, 3).map((member) => (
+                        <Avatar key={member.id} className="size-6 ring-2 ring-card">
+                          <AvatarFallback className="text-[0.6rem]">
+                            {initials(member.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                      ))}
+                      {assignedMembers(channel).length === 0 && (
+                        <span className="text-xs text-muted-foreground">Unassigned</span>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto"
+                      disabled={!canAllocate}
+                      onClick={() => openAssign(channel)}
+                    >
+                      <Users />
+                      Team
+                    </Button>
+                  </div>
+
                   <div className="mt-4 flex items-center gap-2 border-t border-border pt-4">
                     {connected ? (
                       <>
@@ -169,6 +251,19 @@ export function ChannelsView() {
                           <Check className="size-3" />
                           Connected
                         </Badge>
+                        {channel.type === "website" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setWidgetTab("embed");
+                              setWidgetOpen(true);
+                            }}
+                          >
+                            <Code2 />
+                            Embed
+                          </Button>
+                        )}
                         <Button
                           variant="outline"
                           size="sm"
@@ -245,7 +340,54 @@ export function ChannelsView() {
         onOpenChange={setWidgetOpen}
         widget={widget}
         onSave={saveWidget}
+        tab={widgetTab}
+        onTabChange={setWidgetTab}
       />
+
+      <Dialog open={Boolean(assignTarget)} onOpenChange={(open) => !open && setAssignTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Channel team</DialogTitle>
+            <DialogDescription>
+              Allocate moderators and agents who handle {assignTarget?.name}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {members.map((member) => (
+              <label
+                key={member.id}
+                className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+              >
+                <Checkbox
+                  checked={assignIds.includes(member.id)}
+                  onCheckedChange={(checked) =>
+                    setAssignIds((current) =>
+                      checked === true
+                        ? [...new Set([...current, member.id])]
+                        : current.filter((id) => id !== member.id),
+                    )
+                  }
+                />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{member.name}</span>
+                  <span className="block truncate text-xs capitalize text-muted-foreground">
+                    {member.title ?? member.role}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveAssign} disabled={savingAssign}>
+              {savingAssign ? <Spinner /> : null}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -255,13 +397,30 @@ function WidgetConfigDialog({
   onOpenChange,
   widget,
   onSave,
+  tab,
+  onTabChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   widget: WidgetConfig | null;
   onSave: (patch: Partial<WidgetConfig>) => Promise<void>;
+  tab: "design" | "embed";
+  onTabChange: (tab: "design" | "embed") => void;
 }) {
+  const [copied, setCopied] = React.useState(false);
   if (!widget) return null;
+  const snippet = buildEmbedSnippet(widget);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      toast.success("Embed code copied to clipboard");
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Couldn't copy — select the code manually.");
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -269,11 +428,24 @@ function WidgetConfigDialog({
         <DialogHeader>
           <DialogTitle>Website chat widget</DialogTitle>
           <DialogDescription>
-            Customise the embedded widget and see a live preview.
+            Customise the embedded widget, preview it live, and copy the install snippet.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <Tabs value={tab} onValueChange={(value) => onTabChange(value as "design" | "embed")}>
+          <TabsList>
+            <TabsTrigger value="design">
+              <Settings2 />
+              Design
+            </TabsTrigger>
+            <TabsTrigger value="embed">
+              <Code2 />
+              Embed code
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="design">
+            <div className="grid gap-6 lg:grid-cols-2">
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Agent name</Label>
@@ -400,7 +572,73 @@ function WidgetConfigDialog({
               </div>
             </div>
           </div>
-        </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="embed">
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Paste this snippet just before the closing{" "}
+                <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+                  &lt;/body&gt;
+                </code>{" "}
+                tag on every page where the widget should appear. It loads automatically and
+                routes every chat into your SupportBrain inbox.
+              </p>
+
+              <div className="overflow-hidden rounded-xl border border-border bg-muted/40">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Code2 className="size-3.5" />
+                    index.html
+                  </span>
+                  <Button size="sm" variant="outline" onClick={copy}>
+                    {copied ? <Check /> : <Copy />}
+                    {copied ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto scrollbar-thin p-4 text-xs leading-relaxed">
+                  <code className="font-mono">{snippet}</code>
+                </pre>
+              </div>
+
+              <div className="grid gap-3 text-xs sm:grid-cols-3">
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-muted-foreground">Position</p>
+                  <p className="mt-0.5 font-medium capitalize">
+                    {widget.position.replace("-", " ")}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-muted-foreground">Theme</p>
+                  <p className="mt-0.5 font-medium capitalize">{widget.theme}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <p className="text-muted-foreground">Brand colour</p>
+                  <p className="mt-0.5 flex items-center gap-1.5 font-medium">
+                    <span
+                      className="size-3 rounded-full border border-border"
+                      style={{ backgroundColor: widget.primaryColor }}
+                    />
+                    {widget.primaryColor}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-primary-soft/50 p-3">
+                <p className="text-xs text-muted-foreground">
+                  See the widget running on a customer&apos;s website.
+                </p>
+                <Button asChild size="sm" variant="outline">
+                  <Link href="/demo/store" target="_blank">
+                    <ExternalLink />
+                    Open live demo
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Done</Button>

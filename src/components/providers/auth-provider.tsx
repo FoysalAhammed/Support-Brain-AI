@@ -4,7 +4,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { authService } from "@/services/auth";
 import { demoOrganization } from "@/data/mock-organizations";
-import type { AuthSession, User } from "@/types/user";
+import { hasPermission, type Permission } from "@/lib/permissions";
+import type { AuthSession, User, UserRole } from "@/types/user";
 import type { Organization } from "@/types/organization";
 
 interface AuthContextValue {
@@ -14,6 +15,10 @@ interface AuthContextValue {
   organizations: Organization[];
   ready: boolean;
   isAdmin: boolean;
+  isOwner: boolean;
+  isDeveloper: boolean;
+  role: UserRole | null;
+  can: (permission: Permission) => boolean;
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   register: (input: {
     name: string;
@@ -83,21 +88,30 @@ export function AuthProvider({
   const organization =
     organizations.find((item) => item.id === organizationId) ?? demoOrganization;
 
-  const value = React.useMemo<AuthContextValue>(
-    () => ({
+  const value = React.useMemo<AuthContextValue>(() => {
+    const user = session?.user ?? null;
+    return {
       session,
-      user: session?.user ?? null,
+      user,
       organization,
       organizations,
       ready,
-      isAdmin: session?.user.email.startsWith("admin@") ?? false,
+      isAdmin: Boolean(
+        user && (user.organizationId === "org_platform" || user.email.startsWith("admin@")),
+      ),
+      isOwner: user?.role === "owner",
+      isDeveloper: user?.platformRole === "developer",
+      role: user?.role ?? null,
+      can: (permission: Permission) =>
+        user?.platformRole === "developer"
+          ? true
+          : hasPermission(user?.role ?? null, permission),
       login,
       register,
       logout,
       switchOrganization,
-    }),
-    [session, organization, organizations, ready, login, register, logout, switchOrganization],
-  );
+    };
+  }, [session, organization, organizations, ready, login, register, logout, switchOrganization]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

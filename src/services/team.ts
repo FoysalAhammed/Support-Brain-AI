@@ -4,6 +4,14 @@ import type { User, UserRole } from "@/types/user";
 
 let members: User[] = [...mockTeamMembers];
 
+const roleTitles: Record<UserRole, string> = {
+  owner: "Business Owner",
+  admin: "Admin",
+  moderator: "Moderator",
+  agent: "Support Agent",
+  viewer: "Viewer",
+};
+
 export const teamService = {
   async list(): Promise<User[]> {
     await sleep(40);
@@ -25,9 +33,10 @@ export const teamService = {
       role,
       status: "invited",
       organizationId: "org_northwind",
-      title: role === "viewer" ? "Viewer" : "Support Agent",
+      title: roleTitles[role] ?? "Support Agent",
       lastActiveAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
+      channelIds: [],
     };
     members = [...members, member];
     return member;
@@ -35,7 +44,17 @@ export const teamService = {
 
   async updateRole(id: string, role: UserRole): Promise<User | null> {
     await sleep(260);
-    members = members.map((member) => (member.id === id ? { ...member, role } : member));
+    members = members.map((member) =>
+      member.id === id ? { ...member, role, title: roleTitles[role] } : member,
+    );
+    return members.find((member) => member.id === id) ?? null;
+  },
+
+  async updateChannels(id: string, channelIds: string[]): Promise<User | null> {
+    await sleep(240);
+    members = members.map((member) =>
+      member.id === id ? { ...member, channelIds } : member,
+    );
     return members.find((member) => member.id === id) ?? null;
   },
 

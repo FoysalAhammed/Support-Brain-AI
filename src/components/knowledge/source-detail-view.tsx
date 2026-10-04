@@ -7,9 +7,7 @@ import {
   CheckCircle2,
   Clock,
   Database,
-  Facebook,
   FileText,
-  Globe,
   Layers,
   RefreshCw,
   Sparkles,
@@ -26,6 +24,7 @@ import { CrawlPipeline } from "@/components/knowledge/crawl-pipeline";
 import { KnowledgeTestPanel } from "@/components/knowledge/knowledge-test-panel";
 import { knowledgeService } from "@/services/knowledge";
 import { formatNumber, relativeTime, titleCase } from "@/lib/utils";
+import { sourceMeta } from "@/lib/source-meta";
 import type { CrawlJob } from "@/types/crawler";
 import type {
   ExtractedSection,
@@ -47,8 +46,18 @@ export function SourceDetailView({
   const [syncing, setSyncing] = React.useState(false);
   const [syncedAt, setSyncedAt] = React.useState(source.lastSyncedAt);
 
-  const Icon =
-    source.type === "facebook" ? Facebook : source.type === "document" ? FileText : Globe;
+  const meta = sourceMeta(source.type);
+  const Icon = meta.Icon;
+  const engineLabel =
+    source.engine === "postgresql"
+      ? "PostgreSQL"
+      : source.engine === "mysql"
+        ? "MySQL"
+        : source.engine === "mongodb"
+          ? "MongoDB"
+          : source.engine === "supabase"
+            ? "Supabase Postgres"
+            : "Database";
 
   const sync = async () => {
     setSyncing(true);
@@ -72,8 +81,8 @@ export function SourceDetailView({
               </h1>
               <StatusBadge status={source.status} />
             </div>
-            <p className="text-sm capitalize text-muted-foreground">
-              {source.type === "facebook" ? "Facebook Page" : source.type}
+            <p className="text-sm text-muted-foreground">
+              {meta.label}
               {source.domain ? ` · ${source.domain}` : ""}
               {source.url ? ` · ${source.url}` : ""}
             </p>
@@ -94,10 +103,10 @@ export function SourceDetailView({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric icon={<FileText />} label="Pages" value={formatNumber(job.pagesTotal)} />
+        <Metric icon={<FileText />} label={meta.pageNoun} value={formatNumber(job.pagesTotal)} />
         <Metric
           icon={<Layers />}
-          label="Content blocks"
+          label={meta.blockNoun}
           value={formatNumber(source.contentBlocks || job.contentBlocks)}
         />
         <Metric icon={<Layers />} label="Chunks" value={formatNumber(source.chunks)} />
@@ -112,7 +121,7 @@ export function SourceDetailView({
         <TabsList className="w-full justify-start overflow-x-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
-          <TabsTrigger value="pages">Pages</TabsTrigger>
+          <TabsTrigger value="pages">{meta.pageNoun}</TabsTrigger>
           <TabsTrigger value="chunks">Chunks</TabsTrigger>
           <TabsTrigger value="rag">
             <Sparkles />
@@ -135,9 +144,24 @@ export function SourceDetailView({
               <Card className="p-5">
                 <p className="text-sm font-semibold">Source information</p>
                 <dl className="mt-4 space-y-3 text-sm">
-                  <Row label="Type" value={titleCase(source.type)} />
+                  <Row label="Type" value={meta.label} />
                   <Row label="Status" value={titleCase(source.status)} />
-                  <Row label="Domain" value={source.domain ?? "—"} />
+                  {source.type === "database" ? (
+                    <>
+                      <Row label="Engine" value={engineLabel} />
+                      <Row label="Host" value={source.host ?? source.domain ?? "—"} />
+                      <Row
+                        label="Tables"
+                        value={formatNumber(source.tables ?? job.pagesTotal)}
+                      />
+                      <Row
+                        label="Rows"
+                        value={formatNumber(source.rows ?? source.contentBlocks)}
+                      />
+                    </>
+                  ) : (
+                    <Row label="Domain" value={source.domain ?? "—"} />
+                  )}
                   <Row
                     label="Last synced"
                     value={syncedAt ? relativeTime(syncedAt) : "Never"}

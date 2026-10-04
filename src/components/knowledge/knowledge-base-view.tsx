@@ -6,9 +6,7 @@ import {
   ArrowRight,
   BookOpen,
   Database,
-  Facebook,
   FileText,
-  Globe,
   Layers,
   Plus,
   Sparkles,
@@ -27,6 +25,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { CRAWL_STAGES } from "@/services/crawler";
 import { knowledgeService } from "@/services/knowledge";
 import { formatNumber, relativeTime } from "@/lib/utils";
+import { sourceMeta } from "@/lib/source-meta";
 import type { CrawlJob } from "@/types/crawler";
 import type { KnowledgeSource } from "@/types/knowledge";
 import { AddKnowledgeDialog } from "./add-knowledge-dialog";
@@ -80,7 +79,7 @@ export function KnowledgeBaseView() {
     <div className="space-y-6">
       <PageHeader
         title="Knowledge Base"
-        description="Connect a website or Facebook Page. SupportBrain collects the content, creates embeddings and indexes it so your AI agent answers with your business knowledge."
+        description="Connect a website, Facebook Page, document or database. SupportBrain collects the content, creates embeddings and indexes it so your AI agent answers with your business knowledge."
         actions={
           <Button onClick={() => setAddOpen(true)}>
             <Plus />
@@ -112,7 +111,7 @@ export function KnowledgeBaseView() {
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Sources" value={sources.length} icon={<BookOpen />} hint="Websites, Pages & documents" />
+        <StatCard label="Sources" value={sources.length} icon={<BookOpen />} hint="Websites, Pages, documents & databases" />
         <StatCard label="Pages indexed" value={formatNumber(totals.pages)} icon={<FileText />} hint="Across all connected sources" />
         <StatCard label="Chunks" value={formatNumber(totals.chunks)} icon={<Layers />} hint="Retrievable passages" />
         <StatCard label="Embeddings" value={formatNumber(totals.embeddings)} icon={<Database />} hint="1536-dimension vectors" />
@@ -128,7 +127,7 @@ export function KnowledgeBaseView() {
         <EmptyState
           icon={<BookOpen />}
           title="No knowledge sources yet"
-          description="Add your first website or Facebook Page to give your AI agent the business knowledge it needs to answer customers."
+          description="Add your first website, Facebook Page, document or database to give your AI agent the business knowledge it needs to answer customers."
           action={
             <Button onClick={() => setAddOpen(true)}>
               <Plus />
@@ -139,12 +138,8 @@ export function KnowledgeBaseView() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {sources.map((source) => {
-            const Icon =
-              source.type === "facebook"
-                ? Facebook
-                : source.type === "document"
-                  ? FileText
-                  : Globe;
+            const meta = sourceMeta(source.type);
+            const Icon = meta.Icon;
             return (
               <Card key={source.id} className="flex flex-col gap-4 p-5">
                 <div className="flex items-start gap-3">
@@ -153,8 +148,8 @@ export function KnowledgeBaseView() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{source.name}</p>
-                    <p className="truncate text-xs capitalize text-muted-foreground">
-                      {source.type === "facebook" ? "Facebook Page" : source.type}
+                    <p className="truncate text-xs text-muted-foreground">
+                      {meta.label}
                       {source.domain ? ` · ${source.domain}` : ""}
                     </p>
                   </div>
@@ -162,7 +157,7 @@ export function KnowledgeBaseView() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 text-xs">
-                  <Metric label="Pages" value={formatNumber(source.pages)} />
+                  <Metric label={meta.pageNoun} value={formatNumber(source.pages)} />
                   <Metric label="Chunks" value={formatNumber(source.chunks)} />
                   <Metric label="Embeddings" value={formatNumber(source.embeddings)} />
                 </div>

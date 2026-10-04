@@ -1,4 +1,17 @@
-import { DEMO_EMAIL, DEMO_PASSWORD, adminUser, demoUser } from "@/data/mock-users";
+import {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
+  DEMO_EMAIL,
+  DEMO_PASSWORD,
+  DEVELOPER_EMAIL,
+  DEVELOPER_PASSWORD,
+  MODERATOR_EMAIL,
+  MODERATOR_PASSWORD,
+  adminUser,
+  demoUser,
+  developerUser,
+  moderatorUser,
+} from "@/data/mock-users";
 import type { AuthSession, User } from "@/types/user";
 
 const STORAGE_KEY = "supportbrain.session";
@@ -50,8 +63,16 @@ export const authService = {
       return { ok: true, session: createSession(demoUser) };
     }
 
-    if (normalized === "admin@supportbrain.ai" && password === "admin123") {
+    if (normalized === DEVELOPER_EMAIL && password === DEVELOPER_PASSWORD) {
+      return { ok: true, session: createSession(developerUser) };
+    }
+
+    if (normalized === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
       return { ok: true, session: createSession(adminUser) };
+    }
+
+    if (normalized === MODERATOR_EMAIL && password === MODERATOR_PASSWORD) {
+      return { ok: true, session: createSession(moderatorUser) };
     }
 
     if (!normalized || !password) {
@@ -110,4 +131,4 @@ export const authService = {
   },
 };
 
-export { DEMO_EMAIL, DEMO_PASSWORD };
+export { DEMO_EMAIL, DEMO_PASSWORD, DEVELOPER_EMAIL, DEVELOPER_PASSWORD, MODERATOR_EMAIL, MODERATOR_PASSWORD };

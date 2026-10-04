@@ -16,6 +16,7 @@ export const mockChannels: ChannelConnection[] = [
     connectedAt: agoDays(38),
     handle: "northwind.com",
     configurable: true,
+    assignedUserIds: ["usr_maya", "usr_nina"],
   },
   {
     id: "chn_facebook",
@@ -27,6 +28,7 @@ export const mockChannels: ChannelConnection[] = [
     conversations: 0,
     resolutionRate: 0,
     configurable: true,
+    assignedUserIds: ["usr_liam", "usr_omar"],
   },
   {
     id: "chn_whatsapp",
@@ -73,6 +75,7 @@ export const mockChannels: ChannelConnection[] = [
     connectedAt: agoDays(120),
     handle: "support@northwind.com",
     configurable: true,
+    assignedUserIds: ["usr_sofia"],
   },
 ];
 
